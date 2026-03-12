@@ -1,10 +1,35 @@
 import { Calendar, Calculator, Target, Sparkles } from 'lucide-react';
 
-export default function HomePage() {
+interface HomePageProps {
+  onNavigate?: (page: 'home' | 'workouts' | 'nutrition' | 'profile') => void;
+}
+
+export default function HomePage({ onNavigate }: HomePageProps) {
+  const handleProgramComposition = () => {
+    console.log('Составление программы');
+  };
+
+  const handleWorkoutPrograms = () => {
+    if (onNavigate) {
+      onNavigate('workouts');
+    }
+  };
+
+  const handleKBZHUCalculator = () => {
+    console.log('Калькулятор КБЖУ');
+  };
+
+  const handleCalendar = () => {
+    console.log('Календарь');
+  };
+
   return (
     <div className="space-y-6 mt-8">
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+        <button 
+          onClick={handleProgramComposition}
+          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow active:scale-95 transition-transform cursor-pointer"
+        >
           <div className="flex flex-col items-center text-center gap-2">
             <div className="p-3 bg-blue-50 rounded-full">
               <Target className="text-blue-500" size={28} />
@@ -14,9 +39,12 @@ export default function HomePage() {
               <p className="text-xs text-gray-500 mt-1">Индивидуальный план</p>
             </div>
           </div>
-        </div>
+        </button>
 
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+        <button 
+          onClick={handleWorkoutPrograms}
+          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow active:scale-95 transition-transform cursor-pointer"
+        >
           <div className="flex flex-col items-center text-center gap-2">
             <div className="p-3 bg-blue-50 rounded-full">
               <Sparkles className="text-blue-500" size={28} />
@@ -26,9 +54,12 @@ export default function HomePage() {
               <p className="text-xs text-gray-500 mt-1">Готовые комплексы</p>
             </div>
           </div>
-        </div>
+        </button>
 
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+        <button 
+          onClick={handleKBZHUCalculator}
+          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow active:scale-95 transition-transform cursor-pointer"
+        >
           <div className="flex flex-col items-center text-center gap-2">
             <div className="p-3 bg-blue-50 rounded-full">
               <Calculator className="text-blue-500" size={28} />
@@ -38,9 +69,12 @@ export default function HomePage() {
               <p className="text-xs text-gray-500 mt-1">Норма калорий</p>
             </div>
           </div>
-        </div>
+        </button>
 
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+        <button 
+          onClick={handleCalendar}
+          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow active:scale-95 transition-transform cursor-pointer"
+        >
           <div className="flex flex-col items-center text-center gap-2">
             <div className="p-3 bg-blue-50 rounded-full">
               <Calendar className="text-blue-500" size={28} />
@@ -50,7 +84,7 @@ export default function HomePage() {
               <p className="text-xs text-gray-500 mt-1">Планирование</p>
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
       <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl p-5 shadow-lg mt-6">
