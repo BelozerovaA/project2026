@@ -1,3 +1,4 @@
+
 function App() {
   window.Telegram?.WebApp?.ready();
   
