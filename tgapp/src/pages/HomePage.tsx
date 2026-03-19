@@ -10,13 +10,32 @@ interface HomePageProps {
   onNavigate?: (page: 'home' | 'workouts' | 'nutrition' | 'profile') => void;
 }
 
-export default function HomePage({ onNavigate }: HomePageProps) {
+interface Exercise {
+  id: number;
+  name: string;
+  description: string;
+  image?: string;
+  sets?: number;
+  reps?: string;
+}
+
+interface Program {
+  id: number;
+  title: string;
+  difficulty: string;
+  duration: string;
+  calories: number;
+  focus: string;
+  exercises: Exercise[];
+}
+
+export default function HomePage({ }: HomePageProps) {
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [showKBJUModal, setShowKBJUModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [showProgramsListModal, setShowProgramsListModal] = useState(false);
   const [showProgramDetailModal, setShowProgramDetailModal] = useState(false);
-  const [selectedProgram, setSelectedProgram] = useState(null);
+  const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
 
   const handleProgramComposition = () => {
     setShowProgramModal(true);
@@ -34,8 +53,9 @@ export default function HomePage({ onNavigate }: HomePageProps) {
     setShowCalendarModal(true);
   };
 
-  const handleSelectProgram = (program: any) => {
+  const handleSelectProgram = (program: Program) => {
     setSelectedProgram(program);
+    setShowProgramsListModal(false);
     setShowProgramDetailModal(true);
   };
 
@@ -45,13 +65,13 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         {/* Сетка 2x2 для кнопок */}
         <div className="grid grid-cols-2 gap-4">
           {/* Составление программы */}
-          <button 
+          <button
             onClick={handleProgramComposition}
             className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow active:scale-95 transition-transform cursor-pointer"
           >
             <div className="flex flex-col items-center text-center gap-2">
-              <div className="p-3 bg-blue-50 rounded-full">
-                <Target className="text-blue-500" size={28} />
+              <div className="p-3 bg-[#1f5f1f]/10 rounded-full">
+                <Target className="text-[#1f5f1f]" size={28} />
               </div>
               <div>
                 <h3 className="font-semibold text-gray-800">Составление программы</h3>
@@ -61,13 +81,13 @@ export default function HomePage({ onNavigate }: HomePageProps) {
           </button>
 
           {/* Программы */}
-          <button 
+          <button
             onClick={handleWorkoutPrograms}
             className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow active:scale-95 transition-transform cursor-pointer"
           >
             <div className="flex flex-col items-center text-center gap-2">
-              <div className="p-3 bg-blue-50 rounded-full">
-                <Sparkles className="text-blue-500" size={28} />
+              <div className="p-3 bg-[#1f5f1f]/10 rounded-full">
+                <Sparkles className="text-[#1f5f1f]" size={28} />
               </div>
               <div>
                 <h3 className="font-semibold text-gray-800">Программы</h3>
@@ -77,13 +97,13 @@ export default function HomePage({ onNavigate }: HomePageProps) {
           </button>
 
           {/* Калькулятор КБЖУ */}
-          <button 
+          <button
             onClick={handleKBZHUCalculator}
             className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow active:scale-95 transition-transform cursor-pointer"
           >
             <div className="flex flex-col items-center text-center gap-2">
-              <div className="p-3 bg-blue-50 rounded-full">
-                <Calculator className="text-blue-500" size={28} />
+              <div className="p-3 bg-[#1f5f1f]/10 rounded-full">
+                <Calculator className="text-[#1f5f1f]" size={28} />
               </div>
               <div>
                 <h3 className="font-semibold text-gray-800">Калькулятор КБЖУ</h3>
@@ -93,13 +113,13 @@ export default function HomePage({ onNavigate }: HomePageProps) {
           </button>
 
           {/* Календарь */}
-          <button 
+          <button
             onClick={handleCalendar}
             className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow active:scale-95 transition-transform cursor-pointer"
           >
             <div className="flex flex-col items-center text-center gap-2">
-              <div className="p-3 bg-blue-50 rounded-full">
-                <Calendar className="text-blue-500" size={28} />
+              <div className="p-3 bg-[#1f5f1f]/10 rounded-full">
+                <Calendar className="text-[#1f5f1f]" size={28} />
               </div>
               <div>
                 <h3 className="font-semibold text-gray-800">Календарь</h3>
@@ -110,7 +130,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         </div>
 
         {/* Упражнение дня */}
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl p-5 shadow-lg mt-6">
+        <div className="bg-gradient-to-r from-[#3CAB3C] to-[#2e8b2e] text-white rounded-xl p-5 shadow-lg mt-6">
           <div className="flex items-center gap-2 mb-2">
             <Sparkles size={20} />
             <h2 className="font-semibold">Упражнение дня</h2>
@@ -122,19 +142,19 @@ export default function HomePage({ onNavigate }: HomePageProps) {
       </div>
 
       {/* Модальные окна */}
-      <ProgramCompositionModal 
-        isOpen={showProgramModal} 
-        onClose={() => setShowProgramModal(false)} 
+      <ProgramCompositionModal
+        isOpen={showProgramModal}
+        onClose={() => setShowProgramModal(false)}
       />
-      
-      <KBJUCalculatorModal 
-        isOpen={showKBJUModal} 
-        onClose={() => setShowKBJUModal(false)} 
+
+      <KBJUCalculatorModal
+        isOpen={showKBJUModal}
+        onClose={() => setShowKBJUModal(false)}
       />
-      
-      <CalendarModal 
-        isOpen={showCalendarModal} 
-        onClose={() => setShowCalendarModal(false)} 
+
+      <CalendarModal
+        isOpen={showCalendarModal}
+        onClose={() => setShowCalendarModal(false)}
       />
 
       <ProgramsListModal
@@ -143,11 +163,16 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         onSelectProgram={handleSelectProgram}
       />
 
-      <ProgramDetailModal
-        isOpen={showProgramDetailModal}
-        onClose={() => setShowProgramDetailModal(false)}
-        program={selectedProgram}
-      />
+      {selectedProgram && (
+        <ProgramDetailModal
+          isOpen={showProgramDetailModal}
+          onClose={() => {
+            setShowProgramDetailModal(false);
+            setSelectedProgram(null);
+          }}
+          program={selectedProgram}
+        />
+      )}
     </>
   );
 }
