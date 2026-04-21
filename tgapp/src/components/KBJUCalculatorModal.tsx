@@ -1,5 +1,5 @@
-import { X } from 'lucide-react';
-import { useState } from 'react';
+import { X, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 interface KBJUCalculatorModalProps {
   isOpen: boolean;
@@ -7,13 +7,19 @@ interface KBJUCalculatorModalProps {
 }
 
 export default function KBJUCalculatorModal({ isOpen, onClose }: KBJUCalculatorModalProps) {
+  // --- Состояния данных формы ---
   const [gender, setGender] = useState<'male' | 'female'>('male');
   const [weight, setWeight] = useState<string>('');
   const [height, setHeight] = useState<string>('');
   const [age, setAge] = useState<string>('');
   const [activity, setActivity] = useState<number>(1.55);
   const [goal, setGoal] = useState<'lose' | 'maintain' | 'gain'>('maintain');
+  
+  // --- Состояния UI ---
   const [showResult, setShowResult] = useState(false);
+  const [isFetchingData, setIsFetchingData] = useState(false); 
+  const [isCalculating, setIsCalculating] = useState(false);   
+  
   const [result, setResult] = useState<{
     bmr: number;
     tdee: number;
@@ -30,87 +36,192 @@ export default function KBJUCalculatorModal({ isOpen, onClose }: KBJUCalculatorM
     { value: 1.9, label: 'Очень высокая (физическая работа)' },
   ];
 
+  useEffect(() => {
+    if (isOpen) {
+      setShowResult(false);
+      
+      const fetchUserData = async () => {
+        const tg = (window as any).Telegram?.WebApp;
+        const initData = tg?.initData;
+        if (!initData) return;
+
+        setIsFetchingData(true);
+        try {
+          const res = await fetch('https://api.snnfitmate.ru/telegram/user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ init_data: initData }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const profile = data?.profile;
+            
+            if (profile) {
+              if (profile.gender === 'Мужской') setGender('male');
+              if (profile.gender === 'Женский') setGender('female');
+
+              if (profile.weight) {
+                const w = parseFloat(profile.weight);
+                if (!isNaN(w)) setWeight(w.toString());
+              }
+              if (profile.height) {
+                const h = parseFloat(profile.height);
+                if (!isNaN(h)) setHeight(h.toString());
+              }
+              if (profile.age) {
+                const a = parseInt(profile.age);
+                if (!isNaN(a)) setAge(a.toString());
+              }
+              if (profile.activity) {
+                const act = parseFloat(profile.activity);
+                if (!isNaN(act)) setActivity(act);
+              }
+              if (profile.goal) {
+                setGoal(profile.goal);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Ошибка при загрузке данных профиля:', err);
+        } finally {
+          setIsFetchingData(false);
+        }
+      };
+
+      fetchUserData();
+    }
+  }, [isOpen]);
+
+  // --- ОБРАБОТЧИКИ ВВОДА (Ограничения символов) ---
+
+  const handleWeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Меняем запятую на точку для удобства
+    const val = e.target.value.replace(',', '.');
+    // Разрешаем только: до 3 цифр до точки и до 2 цифр после точки. Никаких минусов и букв.
+    if (/^\d{0,3}(\.\d{0,2})?$/.test(val)) {
+      setWeight(val);
+    }
+  };
+
+  const handleHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Разрешаем только цифры, максимум 3 штуки
+    if (/^\d{0,3}$/.test(val)) {
+      setHeight(val);
+    }
+  };
+
+  const handleAgeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Разрешаем только цифры, максимум 3 штуки
+    if (/^\d{0,3}$/.test(val)) {
+      setAge(val);
+    }
+  };
+
+  // --- Расчет КБЖУ ---
   const calculateKBJU = async () => {
-  const weightNum = parseFloat(weight);
-  const heightNum = parseFloat(height);
-  const ageNum = parseInt(age);
+    const weightNum = parseFloat(weight);
+    const heightNum = parseFloat(height);
+    const ageNum = parseInt(age);
 
-  if (!weightNum || !heightNum || !ageNum) {
-    alert('Заполните все поля');
-    return;
-  }
+    if (!weightNum || !heightNum || !ageNum) {
+      alert('Заполните все поля');
+      return;
+    }
 
-  const tg = (window as any).Telegram?.WebApp;
-  const initData = tg?.initData;
+    // Дополнительная логическая проверка перед отправкой (по желанию)
+    if (weightNum < 35 || weightNum > 300) { alert('Пожалуйста, введите корректный вес (35-300 кг)'); return; }
+    if (heightNum < 140 || heightNum > 250) { alert('Пожалуйста, введите корректный рост (140-250 см)'); return; }
+    if (ageNum < 16 || ageNum > 60) { alert('Пожалуйста, введите корректный возраст (от 16 до 60 лет)'); return; }
 
-  if (!initData) {
-    alert('Откройте приложение через Telegram');
-    return;
-  }
+    const tg = (window as any).Telegram?.WebApp;
+    const initData = tg?.initData;
 
-  try {
-    const res = await fetch('http://127.0.0.1:8000/calculate-kbju', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        init_data: initData,
-        gender,
-        weight: weightNum,
-        height: heightNum,
-        age: ageNum,
-        activity,
-        goal,
-      }),
-    });
+    if (!initData) {
+      alert('Откройте приложение через Telegram');
+      return;
+    }
 
-    if (!res.ok) throw new Error('Ошибка сервера');
+    setIsCalculating(true);
 
-    const data = await res.json();
+    try {
+      const res = await fetch('https://api.snnfitmate.ru/calculate-kbju', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          init_data: initData,
+          gender,
+          weight: weightNum,
+          height: heightNum,
+          age: ageNum,
+          activity,
+          goal,
+        }),
+      });
 
-    setResult(data);
-    setShowResult(true);
+      if (!res.ok) throw new Error('Ошибка сервера');
 
-  } catch (err) {
-    console.error(err);
-    alert('Ошибка расчета');
-  }
-};
+      const data = await res.json();
+      setResult(data);
+      setShowResult(true);
+
+    } catch (err) {
+      console.error(err);
+      alert('Ошибка расчета');
+    } finally {
+      setIsCalculating(false);
+    }
+  };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+    <div 
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4 pt-4 pb-20"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-2xl max-w-md w-full max-h-[calc(100vh-96px)] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Шапка — фиксированная, не скроллится */}
+        <div className="shrink-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
           <h2 className="text-xl font-bold text-gray-800">Калькулятор КБЖУ</h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
             <X size={20} />
           </button>
         </div>
 
-        <div className="p-4">
-          {!showResult ? (
+        {/* Контент — скроллится */}
+        <div className="p-4 overflow-y-auto flex-1 min-h-0">
+          {isFetchingData ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 className="animate-spin text-[#3CAB3C] mb-4" size={40} />
+              <p className="text-gray-500 font-medium">Загрузка ваших данных...</p>
+            </div>
+          ) : !showResult ? (
             <div className="space-y-4">
-              {/* Пол */}
               <div>
                 <h3 className="text-base font-semibold text-gray-800 mb-2">Пол</h3>
                 <div className="flex gap-4">
                   <button
                     onClick={() => setGender('male')}
-                    className={`flex-1 py-3 px-4 rounded-lg font-medium text-base ${
+                    className={`flex-1 py-3 px-4 rounded-lg font-medium text-base border transition-colors ${
                       gender === 'male'
-                        ? 'bg-blue-500 text-white shadow-md'
-                        : 'bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-300'
+                        ? 'bg-[#3CAB3C] text-white border-[#3CAB3C] shadow-md'
+                        : 'bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-300'
                     }`}
                   >
                     Мужской
                   </button>
                   <button
                     onClick={() => setGender('female')}
-                    className={`flex-1 py-3 px-4 rounded-lg font-medium text-base ${
+                    className={`flex-1 py-3 px-4 rounded-lg font-medium text-base border transition-colors ${
                       gender === 'female'
-                        ? 'bg-blue-500 text-white shadow-md'
-                        : 'bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-300'
+                        ? 'bg-[#3CAB3C] text-white border-[#3CAB3C] shadow-md'
+                        : 'bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-300'
                     }`}
                   >
                     Женский
@@ -118,56 +229,48 @@ export default function KBJUCalculatorModal({ isOpen, onClose }: KBJUCalculatorM
                 </div>
               </div>
 
-              {/* Вес */}
               <div>
-                <h3 className="text-base font-semibold text-gray-800 mb-2">Вес</h3>
+                <h3 className="text-base font-semibold text-gray-800 mb-2">Вес (кг)</h3>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={weight}
-                  onChange={(e) => setWeight(e.target.value)}
-                  placeholder="Введите вес в кг"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-gray-800 placeholder-gray-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  min="30"
-                  max="250"
-                  step="0.1"
+                  onChange={handleWeightChange}
+                  placeholder="Например: 75.5"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:border-[#3CAB3C] focus:outline-none text-gray-800 placeholder-gray-500 bg-white"
                 />
               </div>
 
-              {/* Рост */}
               <div>
-                <h3 className="text-base font-semibold text-gray-800 mb-2">Рост</h3>
+                <h3 className="text-base font-semibold text-gray-800 mb-2">Рост (см)</h3>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={height}
-                  onChange={(e) => setHeight(e.target.value)}
-                  placeholder="Введите рост в см"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-gray-800 placeholder-gray-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  min="100"
-                  max="250"
+                  onChange={handleHeightChange}
+                  placeholder="Например: 175"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:border-[#3CAB3C] focus:outline-none text-gray-800 placeholder-gray-500 bg-white"
                 />
               </div>
 
-              {/* Возраст */}
               <div>
-                <h3 className="text-base font-semibold text-gray-800 mb-2">Возраст</h3>
+                <h3 className="text-base font-semibold text-gray-800 mb-2">Возраст (лет)</h3>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={age}
-                  onChange={(e) => setAge(e.target.value)}
-                  placeholder="Введите возраст в годах"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-gray-800 placeholder-gray-500 bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  min="1"
-                  max="120"
+                  onChange={handleAgeChange}
+                  placeholder="Например: 25"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:border-[#3CAB3C] focus:outline-none text-gray-800 placeholder-gray-500 bg-white"
                 />
               </div>
 
-              {/* Коэффициент физической активности */}
               <div>
                 <h3 className="text-base font-semibold text-gray-800 mb-2">Коэффициент физической активности</h3>
                 <select
                   value={activity}
                   onChange={(e) => setActivity(Number(e.target.value))}
-                  className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:border-blue-500 focus:outline-none text-gray-800"
+                  className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:border-[#3CAB3C] focus:outline-none text-gray-800"
                 >
                   {activityLevels.map((level) => (
                     <option key={level.value} value={level.value} className="text-gray-800">
@@ -177,66 +280,57 @@ export default function KBJUCalculatorModal({ isOpen, onClose }: KBJUCalculatorM
                 </select>
               </div>
 
-              {/* Цель для расчета КБЖУ */}
               <div>
                 <h3 className="text-base font-semibold text-gray-800 mb-2">Цель для расчета КБЖУ</h3>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setGoal('lose')}
-                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium ${
-                      goal === 'lose'
-                        ? 'bg-blue-500 text-white border-blue-500 shadow-md'
-                        : 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200'
-                    }`}
-                  >
-                    Похудение
-                  </button>
-                  <button
-                    onClick={() => setGoal('gain')}
-                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium ${
-                      goal === 'gain'
-                        ? 'bg-blue-500 text-white border-blue-500 shadow-md'
-                        : 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200'
-                    }`}
-                  >
-                    Массонабор
-                  </button>
-                  <button
-                    onClick={() => setGoal('maintain')}
-                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium ${
-                      goal === 'maintain'
-                        ? 'bg-blue-500 text-white border-blue-500 shadow-md'
-                        : 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200'
-                    }`}
-                  >
-                    Поддержание
-                  </button>
+                <div className="flex flex-col gap-3">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setGoal('lose')}
+                      className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                        goal === 'lose'
+                          ? 'bg-[#3CAB3C] text-white border-[#3CAB3C] shadow-md'
+                          : 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200'
+                      }`}
+                    >
+                      Похудение
+                    </button>
+                    <button
+                      onClick={() => setGoal('gain')}
+                      className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                        goal === 'gain'
+                          ? 'bg-[#3CAB3C] text-white border-[#3CAB3C] shadow-md'
+                          : 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200'
+                      }`}
+                    >
+                      Массонабор
+                    </button>
+                  </div>
+                  <div className="flex justify-center">
+                    <button
+                      onClick={() => setGoal('maintain')}
+                      className={`w-2/3 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                        goal === 'maintain'
+                          ? 'bg-[#3CAB3C] text-white border-[#3CAB3C] shadow-md'
+                          : 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200'
+                      }`}
+                    >
+                      Коррекция
+                    </button>
+                  </div>
                 </div>
-              </div>
-
-              {/* Кнопка Рассчитать по центру */}
-              <div className="flex justify-center pt-4">
-                <button
-                  onClick={calculateKBJU}
-                  className="px-8 py-3 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors shadow-md text-base"
-                >
-                  Рассчитать
-                </button>
               </div>
             </div>
           ) : (
             result && (
               <div className="space-y-4">
-                {/* Суточная норма калорий */}
-                <div className="bg-blue-50 p-5 rounded-lg border border-blue-300">
-                  <p className="text-sm text-blue-700 mb-1">Суточная норма калорий</p>
-                  <p className="text-3xl font-bold text-blue-700">{result.tdee} ккал</p>
-                  <p className="text-xs text-blue-600 mt-2">
-                    Для {goal === 'lose' ? 'похудения' : goal === 'gain' ? 'набора массы' : 'поддержания веса'}
+                <div className="bg-green-50 p-5 rounded-lg border border-[#3CAB3C]">
+                  <p className="text-sm text-green-800 mb-1">Суточная норма калорий</p>
+                  <p className="text-3xl font-bold text-[#3CAB3C]">{result.tdee} ккал</p>
+                  <p className="text-xs text-green-700 mt-2">
+                    Для {goal === 'lose' ? 'похудения' : goal === 'gain' ? 'набора массы' : 'коррекции'}
                   </p>
                 </div>
 
-                {/* КБЖУ в граммах */}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-red-50 p-3 rounded-lg text-center border border-red-300">
                     <p className="text-xs text-red-700 mb-1">Белки</p>
@@ -246,39 +340,54 @@ export default function KBJUCalculatorModal({ isOpen, onClose }: KBJUCalculatorM
                     <p className="text-xs text-yellow-700 mb-1">Жиры</p>
                     <p className="text-xl font-bold text-yellow-700">{result.fat} г</p>
                   </div>
-                  <div className="bg-green-50 p-3 rounded-lg text-center border border-green-300">
-                    <p className="text-xs text-green-700 mb-1">Углеводы</p>
-                    <p className="text-xl font-bold text-green-700">{result.carbs} г</p>
+                  <div className="bg-[#f0fdf4] p-3 rounded-lg text-center border border-[#3CAB3C]">
+                    <p className="text-xs text-[#3CAB3C] mb-1">Углеводы</p>
+                    <p className="text-xl font-bold text-[#3CAB3C]">{result.carbs} г</p>
                   </div>
-                </div>
-
-                {/* Основной обмен */}
-                <div className="bg-gray-50 p-4 rounded-lg border border-gray-300">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-700">Основной обмен (BMR):</span>
-                    <span className="font-medium text-gray-800">{result.bmr} ккал</span>
-                  </div>
-                </div>
-
-                {/* Кнопки */}
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={() => setShowResult(false)}
-                    className="flex-1 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition-colors border border-gray-300"
-                  >
-                    Новый расчет
-                  </button>
-                  <button
-                    onClick={onClose}
-                    className="flex-1 py-3 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors"
-                  >
-                    Закрыть
-                  </button>
                 </div>
               </div>
             )
           )}
         </div>
+
+        {/* Футер с кнопкой — всегда виден, не скроллится */}
+        {!isFetchingData && (
+          <div className="shrink-0 border-t border-gray-100 p-4">
+            {!showResult ? (
+              <div className="flex justify-center">
+                <button
+                  onClick={calculateKBJU}
+                  disabled={isCalculating}
+                  className="px-8 py-3 bg-[#3CAB3C] text-white rounded-lg font-semibold hover:bg-[#2b8a2b] transition-colors shadow-md text-base flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed min-w-[160px] justify-center"
+                >
+                  {isCalculating ? (
+                    <>
+                      <Loader2 className="animate-spin" size={20} />
+                      Расчет...
+                    </>
+                  ) : (
+                    'Рассчитать'
+                  )}
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowResult(false)}
+                  className="flex-1 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition-colors border border-gray-300"
+                >
+                  Новый расчет
+                </button>
+                <button
+                  onClick={onClose}
+                  className="flex-1 py-3 bg-[#3CAB3C] text-white rounded-lg font-semibold hover:bg-[#2b8a2b] transition-colors"
+                >
+                  Закрыть
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

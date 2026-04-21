@@ -1,287 +1,302 @@
-import { X, ArrowLeft, Settings } from 'lucide-react';
-import { useState } from 'react';
-
-interface Exercise {
-  id: number;
-  name: string;
-  description: string;
-  image?: string;
-  sets?: number;
-  reps?: string;
-}
-
-interface Program {
-  id: number;
-  title: string;
-  difficulty: string;
-  duration: string;
-  calories: number;
-  focus: string;
-  exercises: Exercise[];
-}
+import { ArrowLeft, Check, XCircle, Info, Dumbbell, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import type { Exercise, Program } from '../pages/HomePage';
 
 interface ProgramDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  program: Program | null;
+  program: Program;
+  onSaveProgram: (program: Program) => void;
+  onStartWorkout?: (program: Program) => void;
+  isEditable: boolean;
 }
 
-export default function ProgramDetailModal({ isOpen, onClose, program }: ProgramDetailModalProps) {
-  const [showSettings, setShowSettings] = useState(false);
-  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
-  const [editedProgram, setEditedProgram] = useState<Program | null>(program);
-  const [selectedDifficulty, setSelectedDifficulty] = useState<string>(program?.difficulty || 'Средний');
-  const [selectedExercises, setSelectedExercises] = useState<Exercise[]>(program?.exercises || []);
+type ExerciseChoice = 'accepted' | 'rejected';
 
-  if (!isOpen || !program) return null;
+const DIFFICULTY_LEVELS = ['Начинающий', 'Средний', 'Продвинутый'];
+const API_URL = 'https://api.snnfitmate.ru';
 
-  const allExercises = {
-    'Начинающий': [
-      { id: 1, name: 'Наклоны головы', description: 'Медленные наклоны головы вправо-влево, вперед-назад', image: '🧘', sets: 1, reps: '10 раз' },
-      { id: 2, name: 'Вращения плечами', description: 'Вращайте плечами вперед и назад', image: '🏋️', sets: 1, reps: '15 раз' },
-      { id: 3, name: 'Махи руками', description: 'Махи руками в стороны и вверх', image: '🤸', sets: 1, reps: '20 раз' },
-      { id: 4, name: 'Поза кошки', description: 'На вдохе прогнитесь, на выдохе округлите спину', image: '🐱', sets: 1, reps: '10 раз' },
-    ],
-    'Средний': [
-      { id: 5, name: 'Отжимания', description: 'Классические отжимания, держите спину прямой', image: '💪', sets: 3, reps: '12 раз' },
-      { id: 6, name: 'Приседания', description: 'Держите спину прямо, не отрывайте пятки', image: '🦵', sets: 3, reps: '15 раз' },
-      { id: 7, name: 'Выпады', description: 'Чередуйте ноги, держите корпус прямо', image: '🏃', sets: 3, reps: '12 раз' },
-      { id: 8, name: 'Планка', description: 'Держите спину прямой, не прогибайтесь', image: '🧘', sets: 3, reps: '30 сек' },
-    ],
-    'Продвинутый': [
-      { id: 9, name: 'Бёрпи', description: 'Взрывное движение, работайте в полную силу', image: '💪', sets: 4, reps: '15 раз' },
-      { id: 10, name: 'Скалолаз', description: 'Быстрые движения ногами в упоре лежа', image: '🏃', sets: 4, reps: '20 раз' },
-      { id: 11, name: 'Джампинг Джек', description: 'Прыжки с хлопками', image: '🤸', sets: 4, reps: '30 раз' },
-      { id: 12, name: 'Выпады с прыжком', description: 'Выпады со сменой ног в прыжке', image: '🏋️', sets: 4, reps: '12 раз' },
-    ],
-  };
+function getAdjustedSetsReps(exercise: Exercise, difficulty: string) {
+  let sets = 2;
+  if (difficulty === 'Начинающий') sets = 1;
+  if (difficulty === 'Продвинутый') sets = 3;
+  const repsStr = String(exercise.reps ?? 15);
+  return { sets, reps: repsStr };
+}
 
-  const handleDifficultyChange = (difficulty: string) => {
-    setSelectedDifficulty(difficulty);
-    setSelectedExercises(allExercises[difficulty as keyof typeof allExercises] || []);
-  };
+export default function ProgramDetailModal({
+  isOpen,
+  onClose,
+  program,
+  onSaveProgram,
+  onStartWorkout,
+  isEditable,
+}: ProgramDetailModalProps) {
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('Средний');
+  const [exerciseChoices, setExerciseChoices] = useState<Record<number, ExerciseChoice>>({});
+  const [previewExercise, setPreviewExercise] = useState<Exercise | null>(null);
+  const [imageError, setImageError] = useState(false);
 
-  const toggleExercise = (exercise: Exercise) => {
-    if (selectedExercises.some(e => e.id === exercise.id)) {
-      setSelectedExercises(selectedExercises.filter(e => e.id !== exercise.id));
-    } else {
-      setSelectedExercises([...selectedExercises, exercise]);
+  const availableExercises = program?.exercises || [];
+
+  // Блокировка скролла фона
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
     }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !program) return;
+    setSelectedDifficulty(program.difficulty || 'Средний');
+    setPreviewExercise(null);
+    setImageError(false);
+    const initialChoices: Record<number, ExerciseChoice> = {};
+    availableExercises.forEach((ex) => { initialChoices[ex.id] = 'accepted'; });
+    setExerciseChoices(initialChoices);
+  }, [isOpen, program]);
+
+  const handleAcceptExercise = (exerciseId: number) => {
+    setExerciseChoices((prev) => ({ ...prev, [exerciseId]: 'accepted' }));
+  };
+
+  const handleRejectExercise = (exerciseId: number) => {
+    setExerciseChoices((prev) => ({ ...prev, [exerciseId]: 'rejected' }));
+  };
+
+  const buildUpdatedProgram = (): Program => {
+    const acceptedExercises = availableExercises.filter(
+      (ex) => exerciseChoices[ex.id] === 'accepted'
+    );
+    const adaptedExercises = acceptedExercises.map((ex) => {
+      const adjusted = getAdjustedSetsReps(ex, selectedDifficulty);
+      return { ...ex, sets: adjusted.sets, reps: adjusted.reps };
+    });
+    return { ...program, difficulty: selectedDifficulty, exercises: adaptedExercises, is_finalized: true };
   };
 
   const handleSaveSettings = () => {
-    if (editedProgram) {
-      const updatedProgram = {
-        ...editedProgram,
-        difficulty: selectedDifficulty,
-        exercises: selectedExercises,
-        duration: selectedExercises.length * 5 + ' мин',
-      };
-      setEditedProgram(updatedProgram);
-      setShowSettings(false);
+    const updatedProgram = buildUpdatedProgram();
+    if (isEditable && updatedProgram.exercises.length < 5) {
+      alert('В программе должно остаться не менее 5 упражнений.');
+      return;
+    }
+    onSaveProgram(updatedProgram);
+  };
+
+  const handleStartWorkout = () => {
+    if (!isEditable) {
+        onStartWorkout?.(buildUpdatedProgram());
     }
   };
 
-  const currentExercise = selectedExercises[currentExerciseIndex];
+  const getImageUrl = (path?: string) => {
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+    const cleanPath = path.replace(/\\/g, '/').replace(/^\//, '');
+    return `${API_URL}/${cleanPath}`;
+  };
+  
+  // Закрытие по клику на фон работает только в режиме просмотра
+  const handleOverlayClick = () => {
+    if (!isEditable) {
+      onClose();
+    }
+  };
 
+  if (!isOpen || !program) return null;
+
+  // PREVIEW упражнения
+  if (previewExercise) {
+    const adjusted = getAdjustedSetsReps(previewExercise, selectedDifficulty);
+    const imageUrl = getImageUrl(
+      (previewExercise as any).image || (previewExercise as any).visual_representation
+    );
+
+    return (
+      <div
+        className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] px-4 pt-4 pb-20"
+        onClick={() => setPreviewExercise(null)}
+      >
+        <div
+          className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl flex flex-col max-h-[calc(100vh-96px)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="relative aspect-video bg-green-50 flex items-center justify-center border-b border-gray-100">
+            <button
+              onClick={() => setPreviewExercise(null)}
+              className="absolute top-4 left-4 p-2 bg-white/80 backdrop-blur-sm rounded-full shadow-sm z-10"
+            >
+              <ArrowLeft size={20} className="text-gray-800" />
+            </button>
+            {imageUrl && !imageError ? (
+              <img
+                src={imageUrl}
+                alt={previewExercise.name}
+                className="w-full h-full object-cover"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <Dumbbell size={64} className="text-gray-300 opacity-50" />
+            )}
+          </div>
+          <div className="p-6 overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">{previewExercise.name}</h2>
+            <div className="flex flex-col gap-2 bg-green-50 p-4 rounded-xl border border-green-100 mb-6">
+              <div className="flex items-center gap-2">
+                <Info size={20} className="text-[#3CAB3C]" />
+                <span className="font-bold text-gray-800">
+                  Выполнение:{' '}
+                  <span className="text-[#3CAB3C]">
+                    {adjusted.sets} подх. × {adjusted.reps} повт.
+                  </span>
+                </span>
+              </div>
+            </div>
+            <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
+              {previewExercise.description ||
+                'Описание временно отсутствует. Выполняйте упражнение технично и без резких рывков.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // MAIN
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4 pt-4 pb-20"
+      onClick={handleOverlayClick}
+    >
+      <div
+        className="bg-white rounded-3xl max-w-md w-full max-h-[calc(100vh-96px)] flex flex-col shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Шапка — фиксированная, не скроллится */}
+        <div className="shrink-0 pt-6 px-6 pb-2 border-b border-gray-100 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            {showSettings ? (
-              <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-100 rounded-full">
+            {/* Кнопка "назад" есть только в режиме просмотра */}
+            {!isEditable && (
+              <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
                 <ArrowLeft size={20} />
               </button>
-            ) : (
-              <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
-                <X size={20} />
-              </button>
             )}
-            <h2 className="text-xl font-bold text-gray-800">
-              {showSettings ? 'Настройка программы' : editedProgram?.title}
+            <h2 className="text-lg font-bold text-gray-800">
+              {isEditable ? 'Настройки программы' : 'Просмотр программы'}
             </h2>
           </div>
-          {!showSettings && (
-            <button
-              onClick={() => setShowSettings(true)}
-              className="p-2 hover:bg-gray-100 rounded-full"
-              title="Настройки программы"
-            >
-              <Settings size={20} className="text-gray-600" />
+          {/* Крестик есть только в режиме просмотра */}
+          {!isEditable && (
+             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
             </button>
           )}
         </div>
 
-        {showSettings ? (
-          <div className="p-6 space-y-6">
-            <div>
-              <h3 className="font-semibold text-gray-700 mb-3">Уровень сложности</h3>
-              <div className="flex gap-2">
-                {['Начинающий', 'Средний', 'Продвинутый'].map((level) => (
-                  <button
-                    key={level}
-                    onClick={() => handleDifficultyChange(level)}
-                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                      selectedDifficulty === level
-                        ? 'bg-blue-500 text-white shadow-md'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {level}
-                  </button>
-                ))}
-              </div>
-            </div>
+        {/* Контент — скроллится */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
+          <div>
+            <h3 className="text-sm font-bold text-gray-800 mb-1">{program.title}</h3>
+            <p className="text-sm text-[#3CAB3C] font-medium uppercase tracking-wider">{program.focus}</p>
+          </div>
 
-            <div>
-              <h3 className="font-semibold text-gray-700 mb-3">Упражнения</h3>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {allExercises[selectedDifficulty as keyof typeof allExercises]?.map((exercise) => (
-                  <label
-                    key={exercise.id}
-                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedExercises.some(e => e.id === exercise.id)
-                        ? 'bg-blue-50 border-blue-300'
-                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedExercises.some(e => e.id === exercise.id)}
-                      onChange={() => toggleExercise(exercise)}
-                      className="w-4 h-4 text-blue-500"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{exercise.image}</span>
-                        <span className="font-medium text-gray-800">{exercise.name}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">{exercise.sets} подхода × {exercise.reps}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={() => setShowSettings(false)}
-                className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
-              >
-                Отмена
-              </button>
-              <button
-                onClick={handleSaveSettings}
-                className="flex-1 py-3 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors"
-              >
-                Сохранить
-              </button>
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Сложность</h3>
+            <div className="flex gap-2">
+              {DIFFICULTY_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  onClick={() => isEditable && setSelectedDifficulty(level)}
+                  disabled={!isEditable}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                    selectedDifficulty === level
+                      ? 'bg-[#3CAB3C] text-white shadow-md'
+                      : 'bg-gray-100 text-gray-500'
+                  } ${!isEditable && selectedDifficulty !== level ? 'opacity-50' : ''}`}
+                >
+                  {level}
+                </button>
+              ))}
             </div>
           </div>
-        ) : (
-          <div className="p-4">
-            {selectedExercises.length > 0 && (
-              <div className="mb-4">
-                <div className="flex justify-between text-sm text-gray-600 mb-1">
-                  <span>{currentExerciseIndex + 1} / {selectedExercises.length}</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Упражнения</h3>
+            <div className="space-y-2">
+              {availableExercises.map((exercise) => {
+                const choice = exerciseChoices[exercise.id];
+                const adjusted = getAdjustedSetsReps(exercise, selectedDifficulty);
+
+                return (
                   <div
-                    className="bg-blue-500 h-2 rounded-full transition-all"
-                    style={{ width: `${(currentExerciseIndex + 1) / selectedExercises.length * 100}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
-
-            {currentExercise && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-                <div className="aspect-video bg-gray-100 flex items-center justify-center">
-                  <span className="text-8xl opacity-30">{currentExercise.image || '🏋️'}</span>
-                </div>
-
-                <div className="p-5">
-                  <h2 className="text-xl font-bold text-gray-800 mb-2">{currentExercise.name}</h2>
-
-                  {currentExercise.sets && currentExercise.reps && (
-                    <div className="flex gap-2 mb-3">
-                      <span className="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded-full">
-                        {currentExercise.sets} подхода
-                      </span>
-                      <span className="text-xs px-2 py-1 bg-green-50 text-green-600 rounded-full">
-                        {currentExercise.reps}
-                      </span>
-                    </div>
-                  )}
-
-                  <p className="text-gray-600 mb-6">{currentExercise.description}</p>
-
-                  {selectedExercises.length > 1 && (
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setCurrentExerciseIndex(prev => Math.max(0, prev - 1))}
-                        disabled={currentExerciseIndex === 0}
-                        className={`flex-1 py-3 rounded-lg font-semibold ${
-                          currentExerciseIndex === 0
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                      >
-                        Назад
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (currentExerciseIndex < selectedExercises.length - 1) {
-                            setCurrentExerciseIndex(prev => prev + 1);
-                          }
-                        }}
-                        disabled={currentExerciseIndex === selectedExercises.length - 1}
-                        className={`flex-1 py-3 rounded-lg font-semibold ${
-                          currentExerciseIndex === selectedExercises.length - 1
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'bg-blue-500 text-white hover:bg-blue-600'
-                        }`}
-                      >
-                        Далее
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {selectedExercises.length > 0 && (
-              <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                <h3 className="font-semibold text-gray-700 mb-3">Все упражнения</h3>
-                <div className="space-y-2">
-                  {selectedExercises.map((ex, idx) => (
-                    <div
-                      key={ex.id}
-                      className={`flex items-center justify-between p-2 rounded-lg ${
-                        idx === currentExerciseIndex ? 'bg-blue-50 border border-blue-200' : ''
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                          idx < currentExerciseIndex
-                            ? 'bg-green-500 text-white'
-                            : idx === currentExerciseIndex
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-gray-200 text-gray-600'
-                        }`}>
-                          {idx + 1}
-                        </span>
-                        <span className="text-sm">{ex.name}</span>
+                    key={exercise.id}
+                    onClick={() => setPreviewExercise(exercise)}
+                    className={`flex items-center justify-between gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      choice === 'rejected'
+                        ? 'border-red-300 bg-red-50'
+                        : 'border-green-300 bg-green-50'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-gray-800 leading-tight truncate">{exercise.name}</div>
+                      <div className="text-[11px] font-bold text-[#3CAB3C] mt-1.5">
+                        {adjusted.sets} подходов × {adjusted.reps}{' '}
+                        {isNaN(Number(adjusted.reps)) ? '' : 'повторений'}
                       </div>
-                      <span className="text-xs text-gray-500">{ex.reps}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+
+                    {isEditable && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleAcceptExercise(exercise.id); }}
+                          className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                            choice !== 'rejected'
+                              ? 'bg-green-500 text-white'
+                              : 'bg-white border border-green-300 text-green-500'
+                          }`}
+                        >
+                          <Check size={18} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRejectExercise(exercise.id); }}
+                          className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                            choice === 'rejected'
+                              ? 'bg-red-500 text-white'
+                              : 'bg-white border border-red-300 text-red-500'
+                          }`}
+                        >
+                          <XCircle size={18} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        )}
+        </div>
+
+        {/* Кнопки — фиксированный футер, всегда виден */}
+        <div className="shrink-0 p-4 border-t border-gray-100 flex flex-col gap-2">
+          {isEditable && (
+            <button
+              onClick={handleSaveSettings}
+              className="w-full bg-[#3CAB3C] text-white py-3 rounded-xl font-bold shadow-md hover:bg-green-700 active:scale-95 transition-all"
+            >
+              Сохранить и завершить
+            </button>
+          )}
+          {!isEditable && (
+             <button
+                onClick={handleStartWorkout}
+                className="w-full bg-[#3CAB3C] text-white py-3 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2"
+              >
+                Начать тренировку
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
